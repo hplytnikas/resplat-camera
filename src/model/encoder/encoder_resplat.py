@@ -771,6 +771,7 @@ class EncoderReSplat(Encoder[EncoderReSplatCfg]):
         init_gaussians,
         renderer,
         context_remain=None,
+        camera_refiner=None
         ):
         render_output = []
         render_input_views = []
@@ -809,7 +810,7 @@ class EncoderReSplat(Encoder[EncoderReSplatCfg]):
 
         num_refine = self.cfg.num_refine
         if self.training and self.cfg.train_min_refine > 0 and self.cfg.train_max_refine > 0:
-            num_refine = np.random.randint(self.cfg.train_min_refine, self.cfg.train_max_refine + 1)
+            num_refine = np.random.randint(self.cfg.train_min_refine, self.cfg.train_max_refine + 1) 
 
         tmp_state = rearrange(state, "b n c -> (b n) c")
         init_state = tmp_state
@@ -828,6 +829,29 @@ class EncoderReSplat(Encoder[EncoderReSplatCfg]):
         cached_knn_idx = None
 
         for i in range(num_refine):
+            ### Added for camera refinement #############################
+            if camera_refiner is not None:
+                extrinsics, intrinsics = camera_refiner.step(
+                    depth = input_render.depth,
+                    alpha = input_render.accumulated_alpha,
+                    extrinsics = context["extrinsics"],
+                    intrinsics = context["intrinsics"],
+                )
+                context["extrinsics"] = extrinsics
+                context["intrinsics"] = intrinsics
+
+                # Update the render with the refined camera parameters
+                input_render = renderer.forward(
+                    prev_gaussians,
+                    context["extrinsics"],
+                    context["intrinsics"],
+                    context["near"],
+                    context["far"],
+                    (h, w),
+                )
+            ##############################################################
+
+
             input0 = rearrange(input_render.color, "b v c h w -> (b v) c h w")
             gt_input = context["image"]
             input1 = rearrange(gt_input, "b v c h w -> (b v) c h w")
